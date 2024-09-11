@@ -15,6 +15,9 @@ Bankist is a simple, interactive banking application that allows users to manage
 - **Sorting Transactions**: Sort transactions by date or amount.
 - **Logout Timer**: Automatic logout after a period of inactivity for security.
 
+## Live Demo
+Check out the live version of the Bankist application: https://bankist-eg.netlify.app
+
 ## Installation
 
 1. **Clone the repository**:
