@@ -48,5 +48,3 @@ Bankist is a simple, interactive banking application that allows users to manage
 Contributions are welcome! If you'd like to contribute to the project, please fork the repository and submit a pull request with your changes.
 
 ---
-
-This README provides a comprehensive overview of the Bankist application, including its features, installation instructions, usage guide, and technologies used. It also includes sections for contributing and licensing, making it a well-rounded document for users and developers alike.
