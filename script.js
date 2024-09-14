@@ -56,16 +56,50 @@ const elements = {
 };
 
 // Helper Functions
+
+const formatMovementDate = (date) => {
+    const calcDaysPassed = (date1, date2) =>
+        Math.round(Math.abs(date2 - date1) / (1000 * 60 * 60 * 24));
+
+    const daysPassed = calcDaysPassed(new Date(), date);
+
+    if (daysPassed === 0) return 'Today';
+    if (daysPassed === 1) return 'Yesterday';
+    if (daysPassed <= 7) return `${daysPassed} days ago`;
+    else {
+        const options = {
+            month: 'long', // Use full month name (e.g., "January")
+            day: 'numeric',
+            year: 'numeric',
+        };
+        return new Intl.DateTimeFormat(navigator.language, options).format(date);
+    }
+};
+
+const formatCurrency = (value, locale, currency) => {
+    return new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency: currency,
+    }).format(value);
+};
+
 const displayMovements = (movements, sort = false) => {
     elements.containerMovements.innerHTML = '';
     const movs = sort ? [...movements].sort((a, b) => a - b) : movements;
 
-    movs.forEach((movement, index) => {
-        const type = movement > 0 ? 'deposit' : 'withdrawal';
+    movs.forEach((mov, i) => {
+        const type = mov > 0 ? 'deposit' : 'withdrawal';
+
+        const date = new Date(new Date().setDate(new Date().getDate() - i));
+        const displayDate = formatMovementDate(date);
+
+        const formattedMov = formatCurrency(mov, navigator.language, 'EUR');
+
         const html = `
-      <div class="movements__row">
-        <div class="movements__type movements__type--${type}">${index + 1} ${type}</div>
-        <div class="movements__value">${movement}€</div>
+      <div class="movements__row"><div class="movements__type movements__type--${type}">${i + 1
+        } ${type}</div>
+            <div class="movements__date">${displayDate}</div>
+        <div class="movements__value">${formattedMov}</div>
       </div>
     `;
         elements.containerMovements.insertAdjacentHTML('afterbegin', html);
@@ -75,22 +109,22 @@ const displayMovements = (movements, sort = false) => {
 const calcDisplayBalance = (account) => {
     const balance = account.movements.reduce((acc, mov) => acc + mov, 0);
     account.balance = balance;
-    elements.labelBalance.textContent = `${balance}€`;
+    elements.labelBalance.textContent = formatCurrency(balance, navigator.language, 'EUR');
 };
 
 const calcDisplaySummary = ({ movements, interestRate }) => {
     const incomes = movements.filter(mov => mov > 0).reduce((acc, mov) => acc + mov, 0);
-    elements.labelSumIn.textContent = `${incomes}€`;
+    elements.labelSumIn.textContent = formatCurrency(incomes, navigator.language, 'EUR');
 
     const out = movements.filter(mov => mov < 0).reduce((acc, mov) => acc + mov, 0);
-    elements.labelSumOut.textContent = `${Math.abs(out)}€`;
+    elements.labelSumOut.textContent = formatCurrency(Math.abs(out), navigator.language, 'EUR');
 
     const interest = movements
         .filter(mov => mov > 0)
         .map(deposit => (deposit * interestRate) / 100)
         .filter(int => int >= 1)
         .reduce((acc, int) => acc + int, 0);
-    elements.labelSumInterest.textContent = `${interest}€`;
+    elements.labelSumInterest.textContent = formatCurrency(interest, navigator.language, 'EUR');
 };
 
 const createUsernames = (accounts) => {
@@ -104,16 +138,27 @@ const createUsernames = (accounts) => {
 };
 
 const updateUI = (account) => {
-    displayMovements(account.movements);
-    calcDisplayBalance(account);
-    calcDisplaySummary(account);
+    if (account) { // Check if account is defined
+        displayMovements(account.movements);
+        calcDisplayBalance(account);
+        calcDisplaySummary(account);
+    }
+};
+const formatDate = (date) => {
+    const options = {
+        hour: 'numeric',
+        minute: 'numeric',
+        day: 'numeric',
+        month: 'numeric', // or 'long' or 'short' or '2-digit'
+        year: 'numeric', // or '2-digit'
+    };
+    return new Intl.DateTimeFormat(navigator.language, options).format(date);
 };
 
 // Initialize usernames
 createUsernames(accounts);
 
-let currentAccount;
-
+let currentAccount = null; // Initialize to null
 let logoutTimer;
 
 // Logout Timer Function
@@ -156,9 +201,13 @@ elements.btnLogin.addEventListener('click', (e) => {
 
     currentAccount = accounts.find(acc => acc.username === username);
 
-    if (currentAccount?.pin === pin) {
-        elements.labelWelcome.textContent = `Welcome back, ${currentAccount.owner.split(' ')[0]}`;
+    if (currentAccount && currentAccount.pin === pin) {
+        elements.labelWelcome.textContent = `Welcome back, ${currentAccount ? currentAccount.owner.split(' ')[0] : ''}`;
         elements.containerApp.style.opacity = 100;
+
+        // Display current date and time
+        const now = new Date();
+        elements.labelDate.textContent = formatDate(now);
 
         elements.inputLoginUsername.value = elements.inputLoginPin.value = '';
         elements.inputLoginPin.blur();
@@ -166,7 +215,7 @@ elements.btnLogin.addEventListener('click', (e) => {
         // Update UI
         updateUI(currentAccount);
 
-        // Start or reset the logout timer
+// Start or reset the logout timer
         if (logoutTimer) clearInterval(logoutTimer);
         logoutTimer = startLogoutTimer();
     } else {
@@ -244,7 +293,7 @@ elements.btnClose.addEventListener('click', (e) => {
         const index = accounts.findIndex(acc => acc.username === currentAccount.username);
 
         if (index !== -1) {
-            const firstName = currentAccount.owner.split(' ')[0];
+            const firstName = currentAccount ? currentAccount.owner.split(' ')[0] : '';
 
             accounts.splice(index, 1);
             elements.containerApp.style.opacity = 0;
@@ -274,10 +323,15 @@ elements.btnClose.addEventListener('click', (e) => {
 let sorted = false;
 elements.btnSort.addEventListener('click', (e) => {
     e.preventDefault();
-    displayMovements(currentAccount.movements, !sorted);
-    sorted = !sorted;
+    if (currentAccount) { // Check if currentAccount is defined
+        displayMovements(currentAccount.movements, !sorted);
+        sorted = !sorted;
 
-    // Reset the logout timer
-    clearInterval(logoutTimer);
-    logoutTimer = startLogoutTimer();
+        // Reset the logout timer
+        clearInterval(logoutTimer);
+        logoutTimer = startLogoutTimer();
+    } else {
+        // Handle the case where no user is logged in (e.g., show an error message)
+        alert('Please log in to sort movements.');
+    }
 });
