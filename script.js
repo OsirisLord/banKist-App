@@ -53,9 +53,9 @@ const elements = {
     inputLoanAmount: document.querySelector('.form__input--loan-amount'),
     inputCloseUsername: document.querySelector('.form__input--user'),
     inputClosePin: document.querySelector('.form__input--pin'),
-
 };
 
+// Helper Functions
 const displayMovements = (movements, sort = false) => {
     elements.containerMovements.innerHTML = '';
     const movs = sort ? [...movements].sort((a, b) => a - b) : movements;
@@ -72,32 +72,29 @@ const displayMovements = (movements, sort = false) => {
     });
 };
 
-const calcDisplayBalance = (acc) => {
-    acc.balance = acc.movements.reduce((acc, mov) => acc + mov, 0);
-    elements.labelBalance.textContent = `${acc.balance}€`;
+const calcDisplayBalance = (account) => {
+    const balance = account.movements.reduce((acc, mov) => acc + mov, 0);
+    account.balance = balance;
+    elements.labelBalance.textContent = `${balance}€`;
 };
 
-const calcDisplaySummary = (acc) => {
-    const incomes = acc.movements
-        .filter(mov => mov > 0)
-        .reduce((acc, mov) => acc + mov, 0);
+const calcDisplaySummary = ({ movements, interestRate }) => {
+    const incomes = movements.filter(mov => mov > 0).reduce((acc, mov) => acc + mov, 0);
     elements.labelSumIn.textContent = `${incomes}€`;
 
-    const out = acc.movements
-        .filter(mov => mov < 0)
-        .reduce((acc, mov) => acc + mov, 0);
+    const out = movements.filter(mov => mov < 0).reduce((acc, mov) => acc + mov, 0);
     elements.labelSumOut.textContent = `${Math.abs(out)}€`;
 
-    const interest = acc.movements
+    const interest = movements
         .filter(mov => mov > 0)
-        .map(deposit => (deposit * acc.interestRate) / 100)
+        .map(deposit => (deposit * interestRate) / 100)
         .filter(int => int >= 1)
         .reduce((acc, int) => acc + int, 0);
     elements.labelSumInterest.textContent = `${interest}€`;
 };
 
-const createUsernames = (accs) => {
-    accs.forEach(acc => {
+const createUsernames = (accounts) => {
+    accounts.forEach(acc => {
         acc.username = acc.owner
             .toLowerCase()
             .split(' ')
@@ -106,36 +103,86 @@ const createUsernames = (accs) => {
     });
 };
 
+const updateUI = (account) => {
+    displayMovements(account.movements);
+    calcDisplayBalance(account);
+    calcDisplaySummary(account);
+};
+
+// Initialize usernames
 createUsernames(accounts);
 
-const updateUI = (acc) => {
-    displayMovements(acc.movements);
-    calcDisplayBalance(acc);
-    calcDisplaySummary(acc);
+let currentAccount;
+
+let logoutTimer;
+
+// Logout Timer Function
+const startLogoutTimer = () => {
+    let time = 300; // 5 minutes in seconds
+
+    const tick = () => {
+        const min = Math.floor(time / 60);
+        const sec = String(time % 60).padStart(2, '0');
+
+        // In each call, print the remaining time to the UI
+        elements.labelTimer.textContent = `${min}:${sec}`;
+
+        // When time reaches 0, stop the timer and log out the user
+        if (time === 0) {
+            clearInterval(logoutTimer);
+            elements.labelWelcome.textContent = 'Log in to get started';
+            elements.containerApp.style.opacity = 0;
+            currentAccount = null;
+        }
+
+        // Decrease time by 1 second
+        time--;
+    };
+
+    // Call the tick function immediately to avoid delay
+    tick();
+    // Then, call it every second
+    logoutTimer = setInterval(tick, 1000);
+
+    return logoutTimer;
 };
 
 // Event Handlers
-let currentAccount;
-
 elements.btnLogin.addEventListener('click', (e) => {
     e.preventDefault();
-    currentAccount = accounts.find(acc => acc.username === elements.inputLoginUsername.value);
 
-    if (currentAccount?.pin === Number(elements.inputLoginPin.value)) {
+    const username = elements.inputLoginUsername.value.trim();
+    const pin = Number(elements.inputLoginPin.value);
+
+    currentAccount = accounts.find(acc => acc.username === username);
+
+    if (currentAccount?.pin === pin) {
         elements.labelWelcome.textContent = `Welcome back, ${currentAccount.owner.split(' ')[0]}`;
         elements.containerApp.style.opacity = 100;
 
         elements.inputLoginUsername.value = elements.inputLoginPin.value = '';
         elements.inputLoginPin.blur();
 
+        // Update UI
         updateUI(currentAccount);
+
+        // Start or reset the logout timer
+        if (logoutTimer) clearInterval(logoutTimer);
+        logoutTimer = startLogoutTimer();
+    } else {
+        elements.labelWelcome.textContent = 'Invalid login credentials';
+        setTimeout(() => {
+            elements.labelWelcome.textContent = 'Log in to get started';
+        }, 3000);
     }
 });
 
 elements.btnTransfer.addEventListener('click', (e) => {
     e.preventDefault();
+
     const amount = Number(elements.inputTransferAmount.value);
-    const receiverAcc = accounts.find(acc => acc.username === elements.inputTransferTo.value);
+    const receiverUsername = elements.inputTransferTo.value.trim();
+    const receiverAcc = accounts.find(acc => acc.username === receiverUsername);
 
     elements.inputTransferAmount.value = elements.inputTransferTo.value = '';
 
@@ -148,16 +195,32 @@ elements.btnTransfer.addEventListener('click', (e) => {
         currentAccount.movements.push(-amount);
         receiverAcc.movements.push(amount);
         updateUI(currentAccount);
+
+        // Reset the logout timer
+        clearInterval(logoutTimer);
+        logoutTimer = startLogoutTimer();
+    } else {
+        alert('Transfer failed. Please check the details and try again.');
     }
 });
 
 elements.btnLoan.addEventListener('click', (e) => {
     e.preventDefault();
-    const amount = Number(elements.inputLoanAmount.value);
 
-    if (amount > 0 && currentAccount.movements.some(mov => mov >= amount * 0.1)) {
+    const amount = Math.floor(Number(elements.inputLoanAmount.value));
+
+    if (
+        amount > 0 &&
+        currentAccount.movements.some(mov => mov >= amount * 0.1)
+    ) {
         currentAccount.movements.push(amount);
         updateUI(currentAccount);
+
+        // Reset the logout timer
+        clearInterval(logoutTimer);
+        logoutTimer = startLogoutTimer();
+    } else {
+        alert('Loan request denied. Minimum deposit required.');
     }
 
     elements.inputLoanAmount.value = '';
@@ -166,25 +229,9 @@ elements.btnLoan.addEventListener('click', (e) => {
 elements.btnClose.addEventListener('click', (e) => {
     e.preventDefault();
 
-    if (
-        elements.inputCloseUsername.value === currentAccount.username &&
-        Number(elements.inputClosePin.value) === currentAccount.pin
-    ) {
-        const index = accounts.findIndex(acc => acc.username === currentAccount.username);
-        accounts.splice(index, 1);
-        elements.containerApp.style.opacity = 0;
-    }
-
-    elements.inputCloseUsername.value = elements.inputClosePin.value = '';
-});
-// Updated Close Account Functionality
-elements.btnClose.addEventListener('click', (e) => {
-    e.preventDefault();
-
     const inputUsername = elements.inputCloseUsername.value.trim();
     const inputPin = Number(elements.inputClosePin.value);
 
-    // Check if a user is currently logged in
     if (!currentAccount) {
         elements.labelWelcome.textContent = 'Please log in first.';
         setTimeout(() => {
@@ -193,32 +240,21 @@ elements.btnClose.addEventListener('click', (e) => {
         return;
     }
 
-    // Check if the credentials match the current account
-    if (
-        inputUsername === currentAccount.username &&
-        inputPin === currentAccount.pin
-    ) {
+    if (inputUsername === currentAccount.username && inputPin === currentAccount.pin) {
         const index = accounts.findIndex(acc => acc.username === currentAccount.username);
 
         if (index !== -1) {
-            // Get the first name of the account owner
             const firstName = currentAccount.owner.split(' ')[0];
 
-            // Remove account
             accounts.splice(index, 1);
-
-            // Hide UI
             elements.containerApp.style.opacity = 0;
 
-            // Display closing message
             elements.labelWelcome.textContent = `Account closed. Goodbye, ${firstName}!`;
 
-            // Reset current account
+            // Clear the current account and logout timer
             currentAccount = null;
+            clearInterval(logoutTimer);
 
-            console.log('Account closed successfully');
-
-            // Set a timer to revert the welcome message after 3 seconds
             setTimeout(() => {
                 elements.labelWelcome.textContent = 'Log in to get started';
             }, 3000);
@@ -227,15 +263,11 @@ elements.btnClose.addEventListener('click', (e) => {
         }
     } else {
         elements.labelWelcome.textContent = 'Invalid credentials. Please try again.';
-        console.log('Invalid credentials');
-
-        // Set a timer to revert the welcome message after 3 seconds
         setTimeout(() => {
             elements.labelWelcome.textContent = `Welcome back, ${currentAccount.owner.split(' ')[0]}`;
         }, 3000);
     }
 
-    // Clear input fields
     elements.inputCloseUsername.value = elements.inputClosePin.value = '';
 });
 
@@ -244,4 +276,8 @@ elements.btnSort.addEventListener('click', (e) => {
     e.preventDefault();
     displayMovements(currentAccount.movements, !sorted);
     sorted = !sorted;
+
+    // Reset the logout timer
+    clearInterval(logoutTimer);
+    logoutTimer = startLogoutTimer();
 });
